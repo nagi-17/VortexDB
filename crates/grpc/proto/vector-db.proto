@@ -22,13 +22,19 @@ service VectorDB {
   rpc SearchPoints(SearchRequest) returns (SearchResponse) {}
 
   rpc InsertVectorsBatch(InsertVectorsBatchRequest) returns (InsertVectorsBatchResponse) {}
-rpc SearchPointsBatch(SearchPointsBatchRequest) returns (SearchPointsBatchResponse) {}
+  rpc SearchPointsBatch(SearchPointsBatchRequest) returns (SearchPointsBatchResponse) {}
+
+  rpc CreateCollection(CreateCollectionRequest) returns (CollectionInfo) {}
+  rpc GetCollection(CollectionName) returns (CollectionInfo) {}
+  rpc ListCollections(ListCollectionsRequest) returns (ListCollectionsResponse) {}
+  rpc DeleteCollection(CollectionName) returns (google.protobuf.Empty) {}
 }
 
 
 message InsertVectorRequest {
   DenseVector vector = 1;
   Payload payload = 2;
+  string collection = 3;
 }
 
 
@@ -37,6 +43,7 @@ message SearchRequest {
   Similarity similarity = 2;
   uint64 limit = 3;
   uint64 ef = 4;
+  string collection = 5;
 }
 
 
@@ -56,6 +63,7 @@ message Point {
 
 message PointID {
   UUID id = 1;
+  string collection = 2;
 }
 
 enum Similarity{
@@ -77,6 +85,7 @@ message Payload {
 
 message InsertVectorsBatchRequest {
   repeated InsertVectorRequest vectors = 1;
+  string collection = 2;
 }
 
 message InsertVectorsBatchResponse {
@@ -85,8 +94,39 @@ message InsertVectorsBatchResponse {
 
 message SearchPointsBatchRequest {
   repeated SearchRequest queries = 1;
+  string collection = 2;
 }
 
 message SearchPointsBatchResponse {
   repeated SearchResponse results = 1;
+}
+
+enum IndexType {
+  Flat = 0;
+  KDTree = 1;
+  HNSW = 2;
+}
+
+message CreateCollectionRequest {
+  string name = 1;
+  uint64 dimension = 2;
+  Similarity similarity = 3;
+  IndexType index_type = 4;
+}
+
+message CollectionInfo {
+  string name = 1;
+  uint64 dimension = 2;
+  Similarity similarity = 3;
+  IndexType index_type = 4;
+}
+
+message CollectionName {
+  string name = 1;
+}
+
+message ListCollectionsRequest {}
+
+message ListCollectionsResponse {
+  repeated CollectionInfo collections = 1;
 }
