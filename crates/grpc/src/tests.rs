@@ -1,7 +1,7 @@
 use crate::constants::AUTHORIZATION_HEADER_KEY;
 use crate::service::vectordb::vector_db_client::VectorDbClient;
 use crate::service::vectordb::{
-    ContentType, DenseVector, InsertVectorRequest, Payload, PointId, SearchRequest,
+    ContentType, DenseVector, InsertVectorRequest, Payload, PointId, PointReference, SearchRequest,
 };
 use crate::service::{VectorDBService, run_server};
 use crate::utils::ServerEndpoint;
@@ -92,6 +92,7 @@ async fn test_grpc_server_start() {
             values: test_vec.clone(),
         }),
         payload: Some(Payload::default()),
+        collection_id: None,
     });
     append_test_auth_header(&mut request, TEST_AUTH_BEARER_TOKEN);
 
@@ -115,6 +116,7 @@ async fn test_insert_vector_rpc() {
             content_type: ContentType::Text as i32,
             content: "test".to_string(),
         }),
+        collection_id: None,
     });
     append_test_auth_header(&mut request, TEST_AUTH_BEARER_TOKEN);
 
@@ -124,8 +126,10 @@ async fn test_insert_vector_rpc() {
     assert!(resp.is_ok());
 
     // check if the vector is actually present in the database
-    let mut request = tonic::Request::new(PointId {
-        id: resp.unwrap().into_inner().id,
+    let inserted = resp.unwrap().into_inner();
+    let mut request = tonic::Request::new(PointReference {
+        id: Some(inserted),
+        collection_id: None,
     });
     append_test_auth_header(&mut request, TEST_AUTH_BEARER_TOKEN);
     let resp = client.get_point(request).await;
@@ -146,6 +150,7 @@ async fn test_insert_vector_rpc() {
             values: vec![1.0, 2.0],
         }),
         payload: Some(Payload::default()),
+        collection_id: None,
     });
     append_test_auth_header(&mut request, TEST_AUTH_BEARER_TOKEN);
 
@@ -167,6 +172,7 @@ async fn test_delete_vector_rpc() {
             values: test_vec.clone(),
         }),
         payload: Some(Payload::default()),
+        collection_id: None,
     });
     append_test_auth_header(&mut request, TEST_AUTH_BEARER_TOKEN);
 
@@ -177,8 +183,9 @@ async fn test_delete_vector_rpc() {
     let point = resp.unwrap().into_inner();
 
     // delete the vector
-    let mut request = tonic::Request::new(PointId {
-        id: point.id.clone(),
+    let mut request = tonic::Request::new(PointReference {
+        id: Some(point.clone()),
+        collection_id: None,
     });
     append_test_auth_header(&mut request, TEST_AUTH_BEARER_TOKEN);
 
@@ -188,7 +195,10 @@ async fn test_delete_vector_rpc() {
     assert!(resp.is_ok());
 
     // verify that the vector is deleted
-    let mut request = tonic::Request::new(PointId { id: point.id });
+    let mut request = tonic::Request::new(PointReference {
+        id: Some(point),
+        collection_id: None,
+    });
     append_test_auth_header(&mut request, TEST_AUTH_BEARER_TOKEN);
 
     let resp = client.get_point(request).await;
@@ -209,6 +219,7 @@ async fn test_search_vector_rpc() {
             values: test_vec.clone(),
         }),
         payload: Some(Payload::default()),
+        collection_id: None,
     });
     append_test_auth_header(&mut request, TEST_AUTH_BEARER_TOKEN);
 
@@ -228,6 +239,7 @@ async fn test_search_vector_rpc() {
         similarity: 0, // euclidean distance
         limit: 1,
         ef: 0,
+        collection_id: None,
     });
     append_test_auth_header(&mut request, TEST_AUTH_BEARER_TOKEN);
 
@@ -256,6 +268,7 @@ async fn test_unauthorized_rpc() {
             values: test_vec.clone(),
         }),
         payload: Some(Payload::default()),
+        collection_id: None,
     });
 
     append_test_auth_header(&mut request, "43121");
@@ -275,6 +288,7 @@ async fn test_readonly_key_cannot_write() {
             values: vec![1.0, 2.0, 3.0],
         }),
         payload: Some(Payload::default()),
+        collection_id: None,
     });
     append_test_auth_header(&mut request, TEST_READONLY_BEARER_TOKEN);
 
@@ -295,6 +309,7 @@ async fn test_readonly_key_can_search() {
         similarity: 0,
         limit: 1,
         ef: 0,
+        collection_id: None,
     });
     append_test_auth_header(&mut request, TEST_READONLY_BEARER_TOKEN);
 
