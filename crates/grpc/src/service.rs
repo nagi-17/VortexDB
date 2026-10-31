@@ -11,8 +11,10 @@ use tonic::{Request, Response, Status, service::InterceptorLayer, transport::Ser
 use tracing::{Level, event};
 use uuid::Uuid as UuidCrate;
 use vectordb::{
-    DenseVector, InsertVectorRequest, InsertVectorsBatchRequest, InsertVectorsBatchResponse, Point,
-    PointId, SearchPointsBatchRequest, SearchPointsBatchResponse, SearchRequest, SearchResponse,
+    CollectionId, CollectionInfo, DenseVector, InsertVectorRequest, InsertVectorsBatchRequest,
+    InsertVectorsBatchResponse, ListCollectionsRequest, ListCollectionsResponse, Point, PointId,
+    PointReference, SearchPointsBatchRequest, SearchPointsBatchResponse, SearchRequest,
+    SearchResponse,
     vector_db_server::{VectorDb, VectorDbServer},
 };
 
@@ -58,6 +60,11 @@ impl VectorDb for VectorDBService {
                 ContentType::Image => defs::ContentType::Image,
             };
 
+        let c_id = inner_request
+            .collection_id
+            .map(|c| c.name)
+            .unwrap_or_default();
+
         let point_id = self.vector_db.insert(
             dense_vector.unwrap().values,
             defs::Payload {
@@ -75,12 +82,23 @@ impl VectorDb for VectorDBService {
         }))
     }
 
-    async fn get_point(&self, request: Request<PointId>) -> Result<Response<Point>, Status> {
+    async fn get_point(&self, request: Request<PointReference>) -> Result<Response<Point>, Status> {
         log_rpc("get_point", self.logging);
 
         let inner_request = request.into_inner();
 
-        let point_id = inner_request.id.unwrap_or_default().value;
+        let point_id = inner_request
+            .id
+            .unwrap_or_default()
+            .id
+            .unwrap_or_default()
+            .value;
+
+        let c_id = inner_request
+            .collection_id
+            .map(|c| c.name)
+            .unwrap_or_default();
+
         let point_opt = self
             .vector_db
             .get(UuidCrate::from_str(&point_id).unwrap())
@@ -131,6 +149,11 @@ impl VectorDb for VectorDBService {
             return Err(Status::invalid_argument("Limit must be greater than zero"));
         }
 
+        let c_id = search_request
+            .collection_id
+            .map(|c| c.name)
+            .unwrap_or_default();
+
         let result_point_ids = self
             .vector_db
             .search(SearchQueryInput {
@@ -156,11 +179,23 @@ impl VectorDb for VectorDBService {
         }))
     }
 
-    async fn delete_point(&self, request: Request<PointId>) -> Result<Response<()>, Status> {
+    async fn delete_point(&self, request: Request<PointReference>) -> Result<Response<()>, Status> {
         log_rpc("delete_point", self.logging);
         interceptors::require_write_role(&request)?;
 
-        let point_id = request.into_inner().id.unwrap_or_default().value;
+        let delete_request = request.into_inner();
+
+        let point_id = delete_request
+            .id
+            .unwrap_or_default()
+            .id
+            .unwrap_or_default()
+            .value;
+
+        let c_id = delete_request
+            .collection_id
+            .map(|c| c.name)
+            .unwrap_or_default();
 
         match self
             .vector_db
@@ -185,6 +220,8 @@ impl VectorDb for VectorDBService {
         let req = request.into_inner();
         let mut ids = Vec::with_capacity(req.vectors.len());
 
+        // Extract CollectionID for each vector and check if all are same or not
+
         for vec in req.vectors {
             let payload = vec.payload.map(|p| defs::Payload {
                 content_type: match ContentType::try_from(p.content_type)
@@ -195,6 +232,10 @@ impl VectorDb for VectorDBService {
                 },
                 content: p.content,
             });
+
+            let c_id = vec.collection_id.map(|c| c.name).unwrap_or_default();
+
+            // TODO : Check for same c_id throughout the all vectors
 
             let id = self
                 .vector_db
@@ -226,6 +267,8 @@ impl VectorDb for VectorDBService {
                 .get(query.similarity as usize)
                 .ok_or(tonic::Status::invalid_argument("Invalid similarity"))?;
 
+            let c_id = query.collection_id.map(|c| c.name).unwrap_or_default();
+
             let ids = self
                 .vector_db
                 .search(SearchQueryInput {
@@ -252,6 +295,34 @@ impl VectorDb for VectorDBService {
         }
 
         Ok(tonic::Response::new(SearchPointsBatchResponse { results }))
+    }
+
+    async fn create_collection(
+        &self,
+        request: Request<CollectionInfo>,
+    ) -> Result<Response<CollectionInfo>, Status> {
+        Err(Status::unimplemented("not yet implemented"))
+    }
+
+    async fn get_collection(
+        &self,
+        request: Request<CollectionId>,
+    ) -> Result<Response<CollectionInfo>, Status> {
+        Err(Status::unimplemented("not implemented yet"))
+    }
+
+    async fn list_collections(
+        &self,
+        request: Request<ListCollectionsRequest>,
+    ) -> Result<Response<ListCollectionsResponse>, Status> {
+        Err(Status::unimplemented("not implemented yet"))
+    }
+
+    async fn delete_collection(
+        &self,
+        request: Request<CollectionId>,
+    ) -> Result<Response<()>, Status> {
+        Err(Status::unimplemented("not implemented yet"))
     }
 }
 pub async fn run_server(
