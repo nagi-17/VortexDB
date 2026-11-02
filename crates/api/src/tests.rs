@@ -1,5 +1,7 @@
 use super::*;
 
+use crate::collection::{CollectionManager, CollectionSpec, DEFAULT_COLLECTION};
+
 // TODO: Add more exhaustive tests
 
 use std::sync::Mutex;
@@ -447,5 +449,97 @@ fn test_snapshot_engine() {
             assert!(db.get(*absent_id).unwrap_or(None).is_none());
         }
         std::mem::drop(db);
+    }
+}
+
+fn collection_spec(name: &str) -> CollectionSpec {
+    CollectionSpec {
+        id: name.to_string(),
+        dimension: 4,
+        similarity: Similarity::Cosine,
+        index_type: IndexType::Flat,
+    }
+}
+
+fn create_test_manager() -> (CollectionManager, TempDir) {
+    let temp_dir = tempdir().unwrap();
+    let config = DbConfig {
+        storage_type: StorageType::RocksDb,
+        index_type: IndexType::Flat,
+        data_path: temp_dir.path().to_path_buf(),
+        dimension: 3,
+        similarity: Similarity::Cosine,
+        hnsw_config: HnswConfig::default(),
+        kd_tree_config: KDTreeConfig::default(),
+    };
+    let manager = CollectionManager::new(temp_dir.path().to_path_buf(), config).unwrap();
+    (manager, temp_dir)
+}
+
+#[test]
+fn test_collection_default_resolution() {
+    let (manager, _temp_dir) = create_test_manager();
+
+    assert!(manager.get(DEFAULT_COLLECTION).is_ok());
+    assert!(manager.get("").is_ok());
+
+    // unspecified name -> "default".
+    assert_eq!(
+        Arc::as_ptr(&manager.get("").unwrap()),
+        Arc::as_ptr(&manager.get(DEFAULT_COLLECTION).unwrap())
+    );
+
+    assert!(matches!(
+        manager.get("nope"),
+        Err(ApiError::CollectionNotFound { .. })
+    ));
+}
+
+#[test]
+fn test_create_and_fetch_collection() {
+    let (manager, temp_dir) = create_test_manager();
+
+    let created = manager.create(collection_spec("products")).unwrap();
+
+    // collection is at <DATA_PATH>/collections/<name>
+    assert!(
+        temp_dir
+            .path()
+            .join("collections")
+            .join("products")
+            .is_dir()
+    );
+
+    assert_eq!(
+        Arc::as_ptr(&created),
+        Arc::as_ptr(&manager.get("products").unwrap())
+    );
+
+    // check if it is a different instance from the default collection or not
+    assert_ne!(
+        Arc::as_ptr(&created),
+        Arc::as_ptr(&manager.get(DEFAULT_COLLECTION).unwrap())
+    );
+
+    // check if repeated name results in error or not
+    assert!(matches!(
+        manager.create(collection_spec("products")),
+        Err(ApiError::CollectionAlreadyExists { .. })
+    ));
+}
+
+#[test]
+fn test_create_rejects_invalid_names() {
+    let (manager, _temp_dir) = create_test_manager();
+
+    let long_name = "x".repeat(200);
+    for bad in ["", "../etc/passwd", "a/b", "with space", long_name.as_str()] {
+        assert!(
+            matches!(
+                manager.create(collection_spec(bad)),
+                Err(ApiError::InvalidCollectionName { .. })
+            ),
+            "expected {bad:?} to be rejected"
+        );
     }
 }
