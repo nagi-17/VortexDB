@@ -14,6 +14,7 @@ use storage::{StorageEngine, StorageType, VectorPage, create_storage_engine};
 
 use uuid::Uuid;
 
+pub mod collection;
 pub mod error;
 pub use error::{ApiError, Result};
 
@@ -220,7 +221,7 @@ impl SnapshottableDb for VectorDb {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DbConfig {
     pub storage_type: StorageType,
     pub index_type: IndexType,

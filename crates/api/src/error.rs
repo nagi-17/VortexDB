@@ -26,6 +26,17 @@ pub enum ApiError {
 
     #[snafu(display("Failed to initialize database: {reason}"))]
     InitializationFailed { reason: String },
+
+    #[snafu(display("Collection not found: {name}"))]
+    CollectionNotFound { name: String },
+
+    #[snafu(display("Collection '{name}' already exists"))]
+    CollectionAlreadyExists { name: String },
+
+    #[snafu(display("Invalid collection name: '{name}'"))]
+    InvalidCollectionName { name: String },
+    // #[snafu(display("Collection '{name}' is reserved and cannot be deleted"))]
+    // ReservedCollection { name: String },
 }
 
 pub type Result<T, E = ApiError> = std::result::Result<T, E>;
