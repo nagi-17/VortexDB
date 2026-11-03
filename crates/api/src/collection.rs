@@ -97,9 +97,20 @@ impl CollectionManager {
             });
         }
 
+        // Check for existing dir/collection of the same name in root/collections dir
+        // (as the 'collections' HashMap may not contain the collection which have been created during previous startups)
+        // This may lead to opening of existing RocksDB and the new collection (acc. to the user)
+        // would inherit the points of the already exisiting collection
+        let path = self.root.join("collections").join(&spec.id);
+        if path.exists() {
+            return Err(ApiError::CollectionAlreadyExists {
+                name: spec.id.clone(),
+            });
+        }
+
         // load/build config
         let cfg = DbConfig {
-            data_path: self.root.join("collections").join(&spec.id),
+            data_path: path,
             dimension: spec.dimension,
             similarity: spec.similarity,
             index_type: spec.index_type,
