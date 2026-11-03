@@ -148,6 +148,46 @@ impl CollectionManager {
 
         Ok(specs)
     }
+
+    pub fn delete(&self, name: &str) -> Result<()> {
+        let key = Self::resolve(name);
+
+        if key == DEFAULT_COLLECTION {
+            return Err(ApiError::ReservedCollection {
+                name: key.to_string(),
+            });
+        }
+
+        {
+            let collections = self.collections.read().map_err(|_| ApiError::LockError)?;
+            if !collections.contains_key(key) {
+                return Err(ApiError::CollectionNotFound {
+                    name: key.to_string(),
+                });
+            }
+        }
+
+        // unregister first - dropping the last Arc<VectorDb> releases the storage engine's directory handle so that the cleanup works
+        {
+            let mut collections = self.collections.write().map_err(|_| ApiError::LockError)?;
+            collections.remove(key);
+        }
+        {
+            let mut specs = self.specs.write().map_err(|_| ApiError::LockError)?;
+            specs.remove(key);
+        }
+
+        // an ongoing request may still hold this collection open,
+        // so in this case the directory survives and is cleaned up during a future startup
+        let path = self.root.join("collections").join(key);
+        if path.exists()
+            && let Err(e) = fs::remove_dir_all(&path)
+        {
+            tracing::warn!("could not remove collection dir {}: {e}", path.display());
+        }
+
+        Ok(())
+    }
 }
 
 fn validate_name(name: &str) -> Result<()> {
