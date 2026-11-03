@@ -543,3 +543,115 @@ fn test_create_rejects_invalid_names() {
         );
     }
 }
+
+fn collection_ids(manager: &CollectionManager) -> Vec<String> {
+    manager.list().unwrap().into_iter().map(|s| s.id).collect()
+}
+
+#[test]
+fn test_list_collections_is_sorted() {
+    let (manager, _temp_dir) = create_test_manager();
+
+    assert_eq!(collection_ids(&manager), ["default"].map(String::from));
+
+    manager.create(collection_spec("products")).unwrap();
+    manager.create(collection_spec("analytics")).unwrap();
+
+    assert_eq!(
+        collection_ids(&manager),
+        ["analytics", "default", "products"].map(String::from)
+    );
+
+    let products = manager
+        .list()
+        .unwrap()
+        .into_iter()
+        .find(|s| s.id == "products")
+        .unwrap();
+    assert_eq!(products.dimension, 4);
+    assert_eq!(products.index_type, IndexType::Flat);
+}
+
+#[test]
+fn test_delete_collection() {
+    let (manager, temp_dir) = create_test_manager();
+
+    manager.create(collection_spec("products")).unwrap();
+    manager.delete("products").unwrap();
+
+    // no longer reachable
+    assert!(matches!(
+        manager.get("products"),
+        Err(ApiError::CollectionNotFound { .. })
+    ));
+    // no longer listed
+    assert_eq!(collection_ids(&manager), ["default"].map(String::from));
+    assert!(
+        !temp_dir
+            .path()
+            .join("collections")
+            .join("products")
+            .exists()
+    );
+}
+
+// #[test]
+// fn test_delete_default_is_refused() {
+//     let (manager, _temp_dir) = create_test_manager();
+
+//     assert!(matches!(
+//         manager.delete(DEFAULT_COLLECTION),
+//         Err(ApiError::ReservedCollection { .. })
+//     ));
+
+//     // the default collection is not deleted
+//     assert!(manager.get(DEFAULT_COLLECTION).is_ok());
+//     assert!(manager.get("").is_ok());
+// }
+
+#[test]
+fn test_delete_unknown_collection() {
+    let (manager, _temp_dir) = create_test_manager();
+
+    assert!(matches!(
+        manager.delete("nope"),
+        Err(ApiError::CollectionNotFound { .. })
+    ));
+}
+
+#[test]
+fn test_create_refuses_existing_directory() {
+    let dir = tempdir().unwrap();
+    let config = || DbConfig {
+        storage_type: StorageType::RocksDb,
+        index_type: IndexType::Flat,
+        data_path: dir.path().to_path_buf(),
+        dimension: 3,
+        similarity: Similarity::Cosine,
+        hnsw_config: HnswConfig::default(),
+        kd_tree_config: KDTreeConfig::default(),
+    };
+
+    // session A: create a collection and put a point in it
+    {
+        let manager = CollectionManager::new(dir.path().to_path_buf(), config()).unwrap();
+        let products = manager.create(collection_spec("products")).unwrap();
+        products
+            .insert(vec![1.0, 2.0, 3.0, 4.0], test_payload("old"))
+            .unwrap();
+    } // process "ends" - the data directory outlives it
+
+    // session B: with no catalog yet, `products` is not registered on startup...
+    let manager = CollectionManager::new(dir.path().to_path_buf(), config()).unwrap();
+    assert!(matches!(
+        manager.get("products"),
+        Err(ApiError::CollectionNotFound { .. })
+    ));
+
+    // ...but its directory is on disk, so the name must be refused rather than
+    // silently reopening the old database and inheriting its points
+    assert!(matches!(
+        manager.create(collection_spec("products")),
+        Err(ApiError::CollectionAlreadyExists { .. })
+    ));
+}

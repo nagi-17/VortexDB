@@ -35,8 +35,9 @@ pub enum ApiError {
 
     #[snafu(display("Invalid collection name: '{name}'"))]
     InvalidCollectionName { name: String },
-    // #[snafu(display("Collection '{name}' is reserved and cannot be deleted"))]
-    // ReservedCollection { name: String },
+
+    #[snafu(display("Collection '{name}' is reserved and cannot be deleted"))]
+    ReservedCollection { name: String },
 }
 
 pub type Result<T, E = ApiError> = std::result::Result<T, E>;
